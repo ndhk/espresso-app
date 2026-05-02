@@ -3,6 +3,7 @@ import { LineChart, Line, ScatterChart, Scatter, XAxis, YAxis, Tooltip, Responsi
 import { migrateLegacyEspressoShots } from "./core/storage/migrateLegacyEspressoShots.js";
 import { getEventsByModule, saveEvent, updateEvent, deleteEvent } from "./core/storage/eventStore.js";
 import { createEspressoShotEvent, platformEventToShot } from "./core/adapters/espressoAdapter.js";
+import DeveloperDataView from "./components/DeveloperDataView.jsx";
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 const uuid = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
@@ -253,6 +254,7 @@ export default function App() {
   const [filterMinScore, setFilterMinScore] = useState(0);
   const [sortBy, setSortBy] = useState("newest");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [showDevData, setShowDevData] = useState(false);
 
   // Persist coffees (shots are persisted via eventStore on save/update/delete)
   useEffect(() => { STORE.set("coffees", coffees); }, [coffees]);
@@ -1031,8 +1033,28 @@ export default function App() {
           </div>
         )}
 
+        {/* ── Developer Data ── */}
+        {showDevData && <DeveloperDataView onClose={() => setShowDevData(false)} />}
+
         {/* ── Toast ── */}
         {toast && <div className="toast">{toast}</div>}
+
+        {/* ── Dev button (fixed, bottom-right) ── */}
+        <button
+          onClick={() => setShowDevData(true)}
+          style={{
+            position: "fixed", bottom: 8, right: 8,
+            background: "transparent", border: "none",
+            color: "var(--text3)", fontSize: 10,
+            fontFamily: "var(--font-mono)", letterSpacing: "0.06em",
+            cursor: "pointer", padding: "4px 6px", zIndex: 40,
+            opacity: 0.5
+          }}
+          onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+          onMouseLeave={e => e.currentTarget.style.opacity = "0.5"}
+        >
+          dev
+        </button>
       </div>
     </>
   );
