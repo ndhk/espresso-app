@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { LineChart, Line, ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
+import { migrateLegacyEspressoShots } from "./core/storage/migrateLegacyEspressoShots.js";
+import { getEventsByModule, saveEvent, updateEvent, deleteEvent } from "./core/storage/eventStore.js";
+import { createEspressoShotEvent, platformEventToShot } from "./core/adapters/espressoAdapter.js";
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 const uuid = () => crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 const now = () => new Date();
 const fmtDate = d => d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
-const fmtTime = d => d ? new Date(d).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
 const coffeeAge = (shotDate, roastDate) => {
   if (!shotDate || !roastDate) return null;
   const diff = Math.round((new Date(shotDate) - new Date(roastDate)) / 86400000);
@@ -16,7 +18,7 @@ const ratio = (dose, yld) => dose && yld ? (yld / dose).toFixed(2) : "—";
 // ── Storage ────────────────────────────────────────────────────────────────────
 const STORE = {
   get: (k, d = []) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
-  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { console.warn("[STORE] write failed", e); } }
 };
 
 // ── Taste options ──────────────────────────────────────────────────────────────
@@ -233,7 +235,12 @@ const defaultCoffee = () => ({
 // ── App ────────────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab] = useState("log");
-  const [shots, setShots] = useState(() => STORE.get("shots", []));
+  const [shots, setShots] = useState(() => {
+    migrateLegacyEspressoShots();
+    return getEventsByModule("espresso")
+      .map(platformEventToShot)
+      .filter(Boolean);
+  });
   const [coffees, setCoffees] = useState(() => STORE.get("coffees", []));
   const [toast, setToast] = useState(null);
   const [shotModal, setShotModal] = useState(false);
@@ -247,8 +254,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState("newest");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  // Persist
-  useEffect(() => { STORE.set("shots", shots); }, [shots]);
+  // Persist coffees (shots are persisted via eventStore on save/update/delete)
   useEffect(() => { STORE.set("coffees", coffees); }, [coffees]);
 
   const showToast = useCallback((msg) => {
@@ -288,18 +294,36 @@ export default function App() {
       return;
     }
     if (shotForm.id) {
+      // Edit: find and update the matching platform event
+      const allEvents = getEventsByModule("espresso");
+      const evt = allEvents.find(e =>
+        e.id === shotForm.id ||
+        e.data?.id === shotForm.id ||
+        e.source?.sourceEventId === shotForm.id
+      );
+      if (evt) {
+        updateEvent(evt.id, { data: { ...shotForm }, updatedAt: now().toISOString() });
+      }
       setShots(s => s.map(x => x.id === shotForm.id ? shotForm : x));
       showToast("Shot updated");
     } else {
       const s = { ...shotForm, id: uuid(), createdAt: now().toISOString() };
+      const evt = createEspressoShotEvent(s);
+      saveEvent(evt);
       setShots(prev => [s, ...prev]);
-      const coffee = coffees.find(c => c.id === s.coffeeId);
       showToast(`Shot saved — Score ${s.score}, 1:${ratio(s.dose, s.yield)}`);
     }
     setShotModal(false);
   };
 
   const deleteShot = (id) => {
+    const allEvents = getEventsByModule("espresso");
+    const evt = allEvents.find(e =>
+      e.id === id ||
+      e.data?.id === id ||
+      e.source?.sourceEventId === id
+    );
+    if (evt) deleteEvent(evt.id);
     setShots(s => s.filter(x => x.id !== id));
     setDeleteConfirm(null);
     showToast("Shot deleted");
