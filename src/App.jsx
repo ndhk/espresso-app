@@ -444,12 +444,40 @@ export default function App() {
   };
 
   // ── Export / Import ──
-  const exportJSON = () => {
+  const exportJSON = async () => {
     const data = JSON.stringify({ shots, coffees }, null, 2);
+    const filename = `espresso-${new Date().toISOString().slice(0,10)}.json`;
+    const blob = new Blob([data], { type: "application/json" });
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches
+      || navigator.standalone === true;
+
+    if ((isIOS || isStandalone) && navigator.share && navigator.canShare && typeof File !== "undefined") {
+      const file = new File([blob], filename, { type: blob.type });
+      if (!navigator.canShare({ files: [file] })) return downloadBlob(blob, filename);
+
+      try {
+        await navigator.share({ files: [file], title: "Espresso log export" });
+        return;
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        console.warn("[EXPORT] Share failed, falling back to download", error);
+      }
+    }
+
+    downloadBlob(blob, filename);
+  };
+
+  const downloadBlob = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = "data:application/json," + encodeURIComponent(data);
-    a.download = `espresso-${new Date().toISOString().slice(0,10)}.json`;
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const importJSON = (e) => {
