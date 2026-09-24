@@ -4,6 +4,7 @@ import { getEvents } from "../core/storage/eventStore.js";
 const SENTINEL_KEY  = "platform_events_v1_espresso_migration_done";
 const BACKUP_KEY    = "platform_events_v1_espresso_migration_backup";
 const LEGACY_KEY    = "shots";
+const COFFEES_KEY   = "coffees";
 
 function sortedLatest(events, n = 5) {
   return [...events]
@@ -18,6 +19,7 @@ function sortedLatest(events, n = 5) {
 export default function DeveloperDataView({ onClose }) {
   const [allEvents] = useState(() => { try { return getEvents(); } catch { return []; } });
   const [copyMsg, setCopyMsg] = useState("");
+  const [coffeeCopyMsg, setCoffeeCopyMsg] = useState("");
 
   const espressoEvents  = allEvents.filter(e => e.module === "espresso");
   const profileCount    = new Set(allEvents.map(e => e.profileId).filter(Boolean)).size;
@@ -62,6 +64,42 @@ export default function DeveloperDataView({ onClose }) {
     setTimeout(() => setCopyMsg(""), 3000);
   };
 
+  const handleCopyCoffees = async () => {
+    const raw = localStorage.getItem(COFFEES_KEY);
+    if (!raw) {
+      setCoffeeCopyMsg("No coffee data found");
+      setTimeout(() => setCoffeeCopyMsg(""), 3000);
+      return;
+    }
+
+    let text = raw;
+    try {
+      text = JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      // Preserve the raw stored value if it cannot be parsed.
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCoffeeCopyMsg("Copied!");
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity  = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setCoffeeCopyMsg("Copied!");
+      } catch {
+        setCoffeeCopyMsg("Copy failed");
+      }
+    }
+    setTimeout(() => setCoffeeCopyMsg(""), 3000);
+  };
+
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" style={{ maxHeight: "88dvh" }}>
@@ -100,12 +138,15 @@ export default function DeveloperDataView({ onClose }) {
 
         {/* Export / Copy */}
         <div className="section-label">Export</div>
-        <div className="flex gap-2" style={{ marginBottom: 16 }}>
+        <div className="flex gap-2" style={{ marginBottom: 16, flexWrap: "wrap" }}>
           <button className="btn btn-ghost btn-sm" onClick={handleExport}>
             Export Platform Events JSON
           </button>
           <button className="btn btn-ghost btn-sm" onClick={handleCopy}>
-            {copyMsg || "Copy to Clipboard"}
+            {copyMsg || "Copy Events JSON"}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={handleCopyCoffees}>
+            {coffeeCopyMsg || "Copy Coffees JSON"}
           </button>
         </div>
 
